@@ -14,6 +14,7 @@ Output layout:
 """
 
 import argparse
+import concurrent.futures
 import json
 import os
 import sys
@@ -22,7 +23,7 @@ import urllib.error
 import urllib.request
 
 API = "https://api.github.com"
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 
 
 def make_request(url, token):
@@ -139,44 +140,59 @@ def render_markdown(item, kind, comments, review_comments=None):
     return "\n".join(lines)
 
 
-def dump_items(items, kind, subdir, outdir, token, no_comments, no_review_comments):
+def dump_one(item, kind, d, token, no_comments, no_review_comments):
+    """Fetch comments for one item and write its .json/.md. Returns index entry."""
+    n = item["number"]
+    comments = []
+    review_comments = []
+    if not no_comments and item.get("comments"):
+        comments = list(get_paginated(item["comments_url"], token))
+    if kind == "PR" and not no_review_comments and item.get("review_comments"):
+        review_comments = list(get_paginated(item["review_comments_url"], token))
+    raw = dict(item)
+    raw["_comments"] = comments
+    if kind == "PR":
+        raw["_review_comments"] = review_comments
+    stem = os.path.join(d, "%06d" % n)
+    with open(stem + ".json", "w", encoding="utf-8") as f:
+        json.dump(raw, f, ensure_ascii=False, indent=2, sort_keys=True)
+    with open(stem + ".md", "w", encoding="utf-8") as f:
+        f.write(render_markdown(item, kind, comments, review_comments))
+    return {
+        "number": n,
+        "title": item.get("title", ""),
+        "state": item.get("state"),
+        "merged_at": item.get("merged_at") if kind == "PR" else None,
+        "author": user_login(item),
+        "created_at": item.get("created_at"),
+        "closed_at": item.get("closed_at"),
+        "comments": len(comments),
+        "labels": [l["name"] for l in item.get("labels", [])],
+        "html_url": item.get("html_url"),
+    }
+
+
+def dump_items(items, kind, subdir, outdir, token, no_comments, no_review_comments,
+               jobs):
     d = os.path.join(outdir, subdir)
     os.makedirs(d, exist_ok=True)
     index = []
     total = len(items)
-    for i, item in enumerate(items, 1):
-        n = item["number"]
-        comments = []
-        review_comments = []
-        if not no_comments and item.get("comments"):
-            comments = list(get_paginated(item["comments_url"], token))
-        if kind == "PR" and not no_review_comments and item.get("review_comments"):
-            review_comments = list(get_paginated(item["review_comments_url"], token))
-        raw = dict(item)
-        raw["_comments"] = comments
-        if kind == "PR":
-            raw["_review_comments"] = review_comments
-        stem = os.path.join(d, "%06d" % n)
-        with open(stem + ".json", "w", encoding="utf-8") as f:
-            json.dump(raw, f, ensure_ascii=False, indent=2, sort_keys=True)
-        with open(stem + ".md", "w", encoding="utf-8") as f:
-            f.write(render_markdown(item, kind, comments, review_comments))
-        index.append(
-            {
-                "number": n,
-                "title": item.get("title", ""),
-                "state": item.get("state"),
-                "merged_at": item.get("merged_at") if kind == "PR" else None,
-                "author": user_login(item),
-                "created_at": item.get("created_at"),
-                "closed_at": item.get("closed_at"),
-                "comments": len(comments),
-                "labels": [l["name"] for l in item.get("labels", [])],
-                "html_url": item.get("html_url"),
-            }
-        )
-        if i % 25 == 0 or i == total:
-            print("  %s: %d/%d" % (subdir, i, total), file=sys.stderr)
+    done = [0]
+
+    def work(item):
+        entry = dump_one(item, kind, d, token, no_comments, no_review_comments)
+        done[0] += 1
+        if done[0] % 25 == 0 or done[0] == total:
+            print("  %s: %d/%d" % (subdir, done[0], total), file=sys.stderr)
+        return entry
+
+    if jobs <= 1:
+        for item in items:
+            index.append(work(item))
+    else:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as ex:
+            index = list(ex.map(work, items))
     index.sort(key=lambda x: x["number"])
     return index
 
@@ -199,6 +215,13 @@ def main():
         "--no-review-comments",
         action="store_true",
         help="skip PR review (inline) comments",
+    )
+    p.add_argument(
+        "-j",
+        "--jobs",
+        type=int,
+        default=8,
+        help="parallel workers for per-item fetches (default: 8)",
     )
     p.add_argument("--version", action="version", version="ghdump " + VERSION)
     args = p.parse_args()
@@ -231,7 +254,8 @@ def main():
 
     os.makedirs(args.outdir, exist_ok=True)
     idx_issues = dump_items(
-        issues, "issue", "issues", args.outdir, token, args.no_comments, True
+        issues, "issue", "issues", args.outdir, token, args.no_comments, True,
+        args.jobs,
     )
     idx_pulls = dump_items(
         pulls,
@@ -241,6 +265,7 @@ def main():
         token,
         args.no_comments,
         args.no_review_comments,
+        args.jobs,
     )
 
     index = {

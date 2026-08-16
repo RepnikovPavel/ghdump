@@ -25,6 +25,7 @@ FLAGS
   --state all|open|closed   Which items to dump (default: all)
   --no-comments             Skip comments (fast, metadata only)
   --no-review-comments      Skip PR review (inline) comments only
+  -j, --jobs=N              Parallel workers for per-item fetches (default: 8)
   --version                 Print version
   --help                    Short help
 

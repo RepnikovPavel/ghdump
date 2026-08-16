@@ -38,7 +38,7 @@ ghdump microsoft/BitNet ./dump --no-comments   # fast, metadata only
 ghdump --help
 ```
 
-Flags: `--state all|open|closed` · `--no-comments` · `--no-review-comments`.
+Flags: `--state all|open|closed` · `--no-comments` · `--no-review-comments` · `-j N` (parallel workers, default 8).
 
 ## For AI agents
 
