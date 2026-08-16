@@ -1,0 +1,39 @@
+# ghdump — GitHub issues/PRs dumper (for AI agents / LLMs)
+#
+# This file is a minimal, low-token brief you can include in an agent's context.
+# Full docs: see ./if_necessary_you_can_read_me/  Source: ./dont_read_me_src/
+
+WHAT IT DOES
+  Downloads ALL issues and pull requests of a GitHub repository via the
+  REST API, including conversation comments (and PR review comments).
+  Writes each item twice: raw JSON (API response + "_comments" /
+  "_review_comments") and a human-readable .md, plus an index.json
+  summary. Stdlib-only Python 3 — no pip packages.
+
+HOW TO CALL
+  ghdump <owner/repo> <outdir>            # e.g. ghdump microsoft/BitNet ./dump
+  Token comes from $GITHUB_TOKEN or $GH_TOKEN. Without a token the
+  unauthenticated rate limit (60 req/h) applies — set one for real repos.
+
+OUTPUT
+  <outdir>/index.json                     repo, counts, per-item summaries
+  <outdir>/issues/NNNNNN.json|.md         one pair per issue
+  <outdir>/pull_requests/NNNNNN.json|.md  one pair per pull request
+  Filenames are zero-padded numbers, so they sort numerically.
+
+FLAGS
+  --state all|open|closed   Which items to dump (default: all)
+  --no-comments             Skip comments (fast, metadata only)
+  --no-review-comments      Skip PR review (inline) comments only
+  --version                 Print version
+  --help                    Short help
+
+IF ghdump IS NOT INSTALLED
+  See ./read_me_if_it_is_not_installed/ — run ./install.sh from a clone;
+  it copies the script to ~/.local/bin/ghdump (or a dir you pass).
+
+NOTES FOR AGENTS
+  - Progress and errors go to stderr; files are the real output.
+  - Exit code 0 on success, non-zero on API/network failure.
+  - Rate limiting is handled automatically (sleeps until the reset time).
+  - Never commit tokens into dumps or repos; pass them via env only.
