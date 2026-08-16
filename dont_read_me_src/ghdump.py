@@ -23,7 +23,7 @@ import urllib.error
 import urllib.request
 
 API = "https://api.github.com"
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 
 
 def make_request(url, token):
@@ -201,6 +201,22 @@ def main():
     p = argparse.ArgumentParser(
         prog="ghdump",
         description="Dump GitHub issues & pull requests of a repo to disk (JSON + Markdown).",
+        epilog="""examples:
+  # typical full dump (token strongly recommended, 60 req/h without it):
+  export GITHUB_TOKEN=ghp_...        # or GH_TOKEN
+  ghdump microsoft/BitNet ./dump
+
+  # only open items:
+  ghdump microsoft/BitNet ./dump --state open
+
+  # fast metadata-only dump (no comments):
+  ghdump microsoft/BitNet ./dump --no-comments
+
+output:
+  <outdir>/index.json, <outdir>/issues/NNNNNN.{json,md},
+  <outdir>/pull_requests/NNNNNN.{json,md}
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument("repo", help="owner/name, e.g. microsoft/BitNet")
     p.add_argument("outdir", help="output directory")
